@@ -344,9 +344,93 @@ python verify_env.py
 
 ---
 
-## 5. Protocolo de Diagnóstico ante Fallas Comunes (Troubleshooting)
+## 5. Setup Automatizado de Plugins (Módulo 05 — Operators de FiftyOne)
 
-### 5.1 La Aplicación FiftyOne Crashea (Puerto 5151)
+### 5.1 El Problema: Plugins en Desarrollo vs. Plugins Descubiertos por FiftyOne
+
+Durante el desarrollo, el código del plugin reside en `src/05_plugins/vlm_auditor/` dentro del repositorio Git para versionarse junto con el resto del código. Sin embargo, FiftyOne busca plugins automáticamente **solo** en la carpeta `~/.fiftyone/plugins/`. 
+
+Este desajuste causa un problema común en hackathons: un desarrollador clona el repo, ejecuta `python -c "import fiftyone as fo; fo.launch_app()"`, pero los plugins no aparecen en la UI porque están en la ubicación "equivocada".
+
+**Solución: `setup_plugins.py`**
+
+Este script automatiza el mapeo de `src/05_plugins/` a `~/.fiftyone/plugins/` mediante symlinks (Unix) o copia de directorios (Windows).
+
+### 5.2 Uso del Script
+
+**Primera vez después de clonar el repo:**
+
+```bash
+python setup_plugins.py
+```
+
+**Salida esperada:**
+
+```
+╔══════════════════════════════════════════════════════════════════════════╗
+║      Visual Agents Hackathon 2026 — Plugin Setup Automation              ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+Modo seleccionado: link  (en Windows sería: copy)
+Fuente de plugins: /repo/src/05_plugins
+Destino: /home/usuario/.fiftyone/plugins
+
+Plugins encontrados: 1
+  - vlm_auditor
+
+  ✅ Symlink creado: ~/.fiftyone/plugins/vlm_auditor → /repo/src/05_plugins/vlm_auditor
+
+======================================================================
+RESUMEN: 1/1 plugins mapeados exitosamente.
+✅ Setup completado. Los plugins son visibles para FiftyOne.
+
+Próximos pasos:
+  1. Inicia la App de FiftyOne: python -c 'import fiftyone as fo; fo.launch_app()'
+  2. Los plugins aparecerán en el panel de Operators (atajo: `)
+```
+
+### 5.3 Opciones Avanzadas
+
+```bash
+# Forzar modo copia (útil en Windows o si hay permisos limitados)
+python setup_plugins.py --mode copy
+
+# Forzar modo symlink (Unix)
+python setup_plugins.py --mode link
+
+# Sobrescribir plugins existentes sin confirmar
+python setup_plugins.py --force
+
+# Ejemplo: copia forzada (común en CI/CD o entornos corporativos)
+python setup_plugins.py --mode copy --force
+```
+
+### 5.4 Auditoría y Logging
+
+El script registra todos los mapeos en `~/.fiftyone/plugins/.setup.log`:
+
+```bash
+# Ver el historial de setup
+cat ~/.fiftyone/plugins/.setup.log
+
+# Esperado:
+# [2026-06-16T10:30:15.123456] SUCCESS: 1 plugins mapeados en modo 'link' (force=False)
+```
+
+### 5.5 Resolución de Problemas con Plugins
+
+| Síntoma | Causa Probable | Solución |
+|---------|---|---|
+| Los plugins no aparecen en la App (atajo ` vacío) | `setup_plugins.py` no fue ejecutado | Ejecutar `python setup_plugins.py` |
+| `mkdir: File exists` o symlink error | El mapeo previo no fue limpiado | Ejecutar `python setup_plugins.py --force` |
+| `Permission denied` (Windows) | Los symlinks requieren admin | Usar `python setup_plugins.py --mode copy` |
+| Plugin cargado pero errors en el operador | Cambios en el código de plugin no están reflejados | Ejecutar `fo.reload_plugins()` en sesión Python activa |
+
+---
+
+## 6. Protocolo de Diagnóstico ante Fallas Comunes (Troubleshooting)
+
+### 6.1 La Aplicación FiftyOne Crashea (Puerto 5151)
 
 Cuando la App de FiftyOne se cierra inesperadamente o no levanta en el navegador, el primer paso es siempre **revisar los logs locales**, no reinstalar a ciegas.
 
@@ -369,7 +453,7 @@ tail -n 100 ~/.fiftyone/log/*.log
 | `Address already in use`                            | El puerto `5151` ya está ocupado por otra instancia.  | Ver Sección 5.2 a continuación.                            |
 | `ModuleNotFoundError`                               | Entorno virtual incorrecto o dependencia faltante.    | Reactivar `.venv` y reinstalar con `pip install fiftyone`. |
 
-### 5.2 Error de Puerto Ocupado (`5151` o `27017`)
+### 6.2 Error de Puerto Ocupado (`5151` o `27017`)
 
 Este es el error más frecuente cuando varios procesos de FiftyOne quedan corriendo en background tras cierres abruptos (Ctrl+C mal ejecutado, kernels de notebook colgados, etc.).
 
@@ -412,7 +496,7 @@ Stop-Process -Id <PID> -Force
 > 
 > Esto libera el puerto `5151` de forma limpia sin necesidad de matar procesos a nivel de sistema operativo.
 
-### 5.3 Checklist Rápido de Diagnóstico
+### 6.3 Checklist Rápido de Diagnóstico
 
 | Síntoma                                           | Primer Comando a Ejecutar                                                                |
 | ------------------------------------------------- | ---------------------------------------------------------------------------------------- |

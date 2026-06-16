@@ -6,7 +6,7 @@ Script de validación defensiva del entorno local de desarrollo.
 Repositorio: https://github.com/santiagoGal7/visual-agents-hackathon-2026.git
 
 Ejecutar desde la raíz del proyecto:
-    python verify_env.py
+    python src/01_setup/verify_env.py
 
 Verifica:
   1. Versión de Python == 3.11.x
@@ -183,23 +183,17 @@ def check_fiftyone() -> bool:
 
 def check_mongodb_and_fiftyone_zoo() -> bool:
     """
-    Verifica la conectividad con MongoDB local en el puerto 27017 cargando
-    una DatasetView de prueba de 2 samples del dataset 'quickstart' del zoo
-    de FiftyOne.
-
-    El dataset 'quickstart' se descarga automáticamente por FiftyOne si no
-    existe en caché local (~/.fiftyone/). La descarga ocurre solo la primera
-    vez; las ejecuciones posteriores usan el caché local.
+    Verifica la conectividad con MongoDB local en el puerto 27017 creando
+    un dataset de prueba mínimo con las 5 imágenes locales de data/mock_samples/.
 
     Returns:
         True si la conexión y la DatasetView se crean exitosamente.
         False si MongoDB no está disponible o FiftyOne no está instalado.
     """
-    _section("CHECK 3 · MongoDB (localhost:27017) + FiftyOne Zoo DatasetView")
+    _section("CHECK 3 · MongoDB (localhost:27017) + Dataset de Prueba")
 
     try:
         import fiftyone as fo
-        import fiftyone.zoo as foz
 
     except ImportError:
         _fail("fiftyone no está disponible. Resuelve el CHECK 2 primero.")
@@ -229,42 +223,73 @@ def check_mongodb_and_fiftyone_zoo() -> bool:
         _close_section()
         return False
 
-    # --- Paso 3b: Cargar dataset 'quickstart' del zoo (2 samples) ---
+    # --- Paso 3b: Crear dataset de prueba cargando imágenes locales ---
     _info("")
-    _info("Cargando 2 samples del dataset 'quickstart' del FiftyOne Zoo ...")
-    _info("(Primera ejecución puede tardar mientras se descarga el caché)")
+    _info("Creando dataset de prueba cargando 5 imágenes locales de data/mock_samples/...")
 
+    dataset_created = False
+    dataset_name = "_verify_env_test"
     try:
+        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        mock_samples_dir = os.path.join(root_dir, "data", "mock_samples")
+
+        if not os.path.exists(mock_samples_dir):
+            raise FileNotFoundError(f"La carpeta '{mock_samples_dir}' no existe.")
+
+        image_extensions = (".jpg", ".jpeg", ".png")
+        image_paths = [
+            os.path.join(mock_samples_dir, f)
+            for f in sorted(os.listdir(mock_samples_dir))
+            if f.lower().endswith(image_extensions)
+        ]
+
+        if len(image_paths) < 5:
+            raise FileNotFoundError(
+                f"Se esperaban al menos 5 imágenes en '{mock_samples_dir}', "
+                f"pero se encontraron {len(image_paths)}."
+            )
+
+        # Usar exactamente las primeras 5 imágenes
+        image_paths = image_paths[:5]
+
+        # Crear dataset de prueba
         t0 = time.perf_counter()
-
-        # max_samples=2 limita la descarga al mínimo necesario para la prueba.
-        # split="validation" garantiza que usamos siempre el mismo subset.
-        dataset: fo.Dataset = foz.load_zoo_dataset(
-            "quickstart",
-            max_samples=2,
-            shuffle=False,
-        )
-
+        
+        # Eliminar dataset previo si existe
+        if dataset_name in existing_datasets:
+            fo.delete_dataset(dataset_name)
+        
+        dataset: fo.Dataset = fo.Dataset(name=dataset_name)
+        dataset.persistent = True
+        
+        samples = []
+        for path in image_paths:
+            sample = fo.Sample(filepath=path)
+            samples.append(sample)
+            
+        dataset.add_samples(samples)
+        
         elapsed_s = time.perf_counter() - t0
-        _ok(f"Dataset 'quickstart' cargado en {elapsed_s:.2f}s.")
-        _info(f"Total de samples en el dataset : {len(dataset)}")
+        _ok(f"Dataset de prueba creado en {elapsed_s:.2f}s.")
+        _info(f"Total de samples : {len(dataset)}")
+        dataset_created = True
 
     except Exception as exc:
-        _fail(
-            f"Error al cargar el dataset 'quickstart' del zoo: "
-            f"{type(exc).__name__}: {exc}"
-        )
-        _info("  → Verifica tu conexión a internet (primera descarga del zoo)")
-        _info("  → O revisa los permisos de escritura en ~/.fiftyone/")
+        _fail(f"No se pudo crear el dataset con imágenes locales: {type(exc).__name__}: {exc}")
+        _info("  → Asegúrate de que las 5 imágenes de prueba existan en data/mock_samples/")
         _close_section()
         return False
 
-    # --- Paso 3c: Crear y validar una DatasetView de 2 samples ---
+    if not dataset_created:
+        _close_section()
+        return False
+
+    # --- Paso 3c: Crear y validar una DatasetView de 5 samples ---
     _info("")
-    _info("Construyendo DatasetView de prueba (limit=2) ...")
+    _info("Construyendo DatasetView de prueba (limit=5) ...")
 
     try:
-        view: fo.DatasetView = dataset.limit(2)
+        view: fo.DatasetView = dataset.limit(5)
         view_count = len(view)
 
         if view_count == 0:
@@ -288,6 +313,13 @@ def check_mongodb_and_fiftyone_zoo() -> bool:
         )
         _close_section()
         return False
+
+    # Limpiar: eliminar dataset de prueba
+    try:
+        if dataset_name in fo.list_datasets():
+            fo.delete_dataset(dataset_name)
+    except:
+        pass  # Ignorar fallos de limpieza
 
     _close_section()
     return True
@@ -413,4 +445,10 @@ def main() -> int:
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        try:
+            sys.stdout.reconfigure(encoding='utf-8')
+            sys.stderr.reconfigure(encoding='utf-8')
+        except AttributeError:
+            pass
     sys.exit(main())
