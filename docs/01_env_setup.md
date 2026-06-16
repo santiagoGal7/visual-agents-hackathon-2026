@@ -147,12 +147,14 @@ FiftyOne expone variables de entorno para controlar explícitamente dónde y có
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `FIFTYONE_DATABASE_DIR` | Define la **ruta del disco local** donde el binario embebido de MongoDB de FiftyOne almacena sus archivos de datos (`.wt`, journals, etc.). Por defecto usa una carpeta dentro de `~/.fiftyone`. | Útil cuando se quiere aislar los datos del dataset en un disco con más espacio, o cuando se necesita resetear el estado de la base de datos eliminando solo esa carpeta sin afectar configuración global. |
 | `FIFTYONE_DATABASE_URI` | Permite apuntar FiftyOne a una **instancia de MongoDB externa** (URI de conexión estándar, ej. `mongodb://usuario:password@host:27017`), en lugar de usar el binario embebido.                   | Crítico si el equipo decide centralizar el dataset en un **servidor MongoDB compartido** para que los 4 integrantes vean el mismo estado de datos en tiempo real durante la hackathon.                    |
+| `DATASET_NAME`          | Nombre canónico del `Dataset` persistente en MongoDB que el resto de módulos (API, Brain, Agents) cargarán por defecto.                                                                         | Cuando se desea estandarizar el nombre del dataset entre ingestion, análisis y la API; si no está definido, el valor por defecto `hackathon-dataset` será usado.                                       |
 
 **Ejemplo de configuración (Unix/Linux/macOS):**
 
 ```bash
 export FIFTYONE_DATABASE_DIR="$HOME/.fiftyone_hackathon/db"
 export FIFTYONE_DATABASE_URI="mongodb://localhost:27017"
+export DATASET_NAME="hackathon-dataset"  # nombre canónico del dataset persistente
 ```
 
 **Ejemplo de configuración (PowerShell):**
@@ -160,9 +162,30 @@ export FIFTYONE_DATABASE_URI="mongodb://localhost:27017"
 ```powershell
 $env:FIFTYONE_DATABASE_DIR = "$HOME\.fiftyone_hackathon\db"
 $env:FIFTYONE_DATABASE_URI = "mongodb://localhost:27017"
+$env:DATASET_NAME = "hackathon-dataset"
 ```
 
-> 🔒 **Recomendación de equipo:** Si optan por una base de datos compartida vía `FIFTYONE_DATABASE_URI`, documenten la URI exacta (sin credenciales sensibles en texto plano dentro del repo) en un archivo `.env` ignorado por Git, y referencien solo el nombre de la variable en este documento.
+Recomendamos mantener estas variables en un archivo `.env` en la raíz del repositorio (añadido a `.gitignore`) para que cada desarrollador pueda personalizarlas sin exponer credenciales ni URIs compartidas en el control de versiones.
+
+**Ejemplo `.env` (IGNORAR por Git):**
+
+```
+FIFTYONE_DATABASE_DIR=$HOME/.fiftyone_hackathon/db
+FIFTYONE_DATABASE_URI=mongodb://localhost:27017
+DATASET_NAME=hackathon-dataset
+```
+
+Y en Python, usar la variable de entorno para cargar el dataset canónico de forma robusta:
+
+```python
+import os
+import fiftyone as fo
+
+DATASET_NAME = os.getenv("DATASET_NAME", "hackathon-dataset")
+dataset = fo.load_dataset(DATASET_NAME)
+```
+
+> 🔒 **Recomendación de equipo:** Si optan por una base de datos compartida vía `FIFTYONE_DATABASE_URI`, documenten la URI en el `.env` (sin credenciales en el repo) y usen `DATASET_NAME` para alinear ingestion y API.
 
 ---
 

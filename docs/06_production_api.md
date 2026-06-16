@@ -89,6 +89,7 @@ El siguiente bloque de código implementa el ciclo de vida completo con verifica
 
 import logging
 import sys
+import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -103,11 +104,13 @@ from fastapi import FastAPI
 logger = logging.getLogger("hackathon_api.lifecycle")
 
 # ---------------------------------------------------------------------------
-# CONSTANTE: Nombre canónico del dataset persistido en MongoDB.
-# Esta constante DEBE coincidir con la utilizada en todos los módulos
-# anteriores (01 al 05) para garantizar el acoplamiento milimétrico del sistema.
+# CONFIG: Nombre canónico del dataset persistido en MongoDB.
+# Se recomienda leerlo desde la variable de entorno `DATASET_NAME` para
+# que la ingesta, el Brain y la API sean configurables por entorno.
+# Si no está definida, por compatibilidad se usa el valor por defecto
+# "hackathon-dataset".
 # ---------------------------------------------------------------------------
-DATASET_NAME: str = "hackathon-dataset"
+DATASET_NAME: str = os.getenv("DATASET_NAME", "hackathon-dataset")
 
 # ---------------------------------------------------------------------------
 # Estado global del servidor.
