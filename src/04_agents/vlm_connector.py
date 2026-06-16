@@ -13,6 +13,7 @@ import os
 import base64
 import json
 import logging
+import asyncio
 from pathlib import Path
 from typing import Tuple, Dict, Any, List, Optional
 from PIL import Image, UnidentifiedImageError
@@ -306,7 +307,73 @@ def parse_vlm_response(raw_response: str) -> Dict[str, Any]:
     return validated_data
 
 
-# Demostración básica de uso offline si se ejecuta directamente
+async def process_view_with_vlm(view: Any, provider: str, min_confidence: float, concurrency: int = 5) -> None:
+    """
+    Procesa una vista (DatasetView) de FiftyOne de forma asíncrona utilizando el VLM seleccionado.
+    Inyecta los resultados del VLM en cada una de las muestras.
+    """
+    import fiftyone as fo
+    
+    concurrency_semaphore = asyncio.Semaphore(concurrency)
+
+    async def audit_sample(sample: Any) -> None:
+        async with concurrency_semaphore:
+            try:
+                # 1. Percepción: Codificar la imagen local
+                base64_image, media_type = encode_image_to_base64(sample.filepath)
+
+                # 2. Razonamiento: Llamar al VLM correspondiente
+                vlm_model = "gpt-4o" if provider == "gpt-4o" else "claude-3-5-sonnet-20241022"
+                
+                if provider == "gpt-4o":
+                    raw_response = await query_gpt4o_vision(
+                        api_key=None,
+                        base64_image=base64_image,
+                        prompt=SYSTEM_PROMPT_VISION_ANALYST,
+                        model=vlm_model,
+                        media_type=media_type
+                    )
+                else:
+                    raw_response = await query_claude_vision(
+                        api_key=None,
+                        base64_image=base64_image,
+                        prompt=SYSTEM_PROMPT_VISION_ANALYST,
+                        model=vlm_model,
+                        media_type=media_type
+                    )
+
+                # 3. Postprocesamiento defensivo del JSON retornado
+                vlm_data = parse_vlm_response(raw_response)
+
+                # 4. Acción: Guardar los resultados en FiftyOne
+                # a) Inyectar tags sugeridos
+                existing_tags = set(sample.tags or [])
+                new_tags = [t for t in vlm_data.get("suggested_tags", []) if t not in existing_tags]
+                sample.tags.extend(new_tags)
+
+                # b) Determinar el veredicto del VLM usando el umbral min_confidence
+                confidence = float(vlm_data.get("confidence", 0.0))
+                if confidence < min_confidence:
+                    label = "uncertain"
+                else:
+                    label = "potential_mistake" if vlm_data.get("potential_mistake", False) else "verified"
+
+                sample["vlm_audit"] = fo.Classification(
+                    label=label,
+                    confidence=confidence
+                )
+                sample["vlm_rationale"] = vlm_data.get("rationale", "")
+
+                sample.save()
+                logger.info(f"Sample {sample.id} auditado. Label: {label}, Conf: {confidence:.2f}")
+
+            except Exception as e:
+                logger.error(f"Error procesando sample {sample.id}: {e}", exc_info=True)
+
+    tasks = [audit_sample(sample) for sample in view]
+    await asyncio.gather(*tasks)
+
+
 if __name__ == "__main__":
     print("=== VLM Connector Module ===")
     print("Este módulo contiene clientes asíncronos para VLM (OpenAI / Anthropic).")

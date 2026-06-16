@@ -41,7 +41,7 @@ class VLM_Auditor_Operator(foo.Operator):
 
         # Campo: Selección del proveedor VLM
         inputs.str(
-            "vlm_provider",
+            "provider",
             label="VLM Provider",
             description="Elige gpt-4o (OpenAI) o claude-3-5-sonnet (Anthropic)",
             view=fooTypes.DropdownView(
@@ -50,12 +50,12 @@ class VLM_Auditor_Operator(foo.Operator):
             default="gpt-4o",
         )
 
-        # Campo: Prompt personalizado para la auditoría
-        inputs.str(
-            "audit_prompt",
-            label="Audit Prompt",
-            description="Prompt personalizado para el VLM (ej. 'Describe los objetos presentes')",
-            default="Describe los objetos y anomalías visuales presentes en esta imagen.",
+        # Campo: Umbral de confianza mínimo
+        inputs.float(
+            "min_confidence",
+            label="Min Confidence",
+            description="Umbral de confianza mínimo [0.0 - 1.0] para verificar etiquetas",
+            default=0.5,
         )
 
         return inputs
@@ -76,59 +76,36 @@ class VLM_Auditor_Operator(foo.Operator):
     ) -> Optional[foo.ExecutionResult]:
         """
         Lógica principal: ejecuta la auditoría VLM sobre la vista activa.
-        
-        Este método es invocado bien de forma síncrona (para lotes ≤ 10 samples)
-        o delegada (para lotes > 10 samples), según la configuración en
-        resolve_execution_options() y la decisión del usuario en la UI.
-        
-        Args:
-            ctx: Contexto de ejecución que proporciona acceso a:
-                 - ctx.dataset: El Dataset actual
-                 - ctx.view: La DatasetView filtrada (samples seleccionados)
-                 - ctx.params: Los inputs del formulario del usuario
         """
         try:
-            # Obtener parámetros del usuario
-            vlm_provider = ctx.params.get("vlm_provider", "gpt-4o")
-            audit_prompt = ctx.params.get("audit_prompt", "")
+            # 1. Extraiga los parámetros del formulario de la UI
+            provider = ctx.params.get("provider", "gpt-4o")
+            min_confidence = ctx.params.get("min_confidence", 0.5)
 
-            dataset: fo.Dataset = ctx.dataset
-            view: fo.DatasetView = ctx.view
+            # 2. Obtenga la vista activa que el usuario está viendo en la App
+            view = ctx.target_view
 
             logger.info(
-                f"[VLM_Auditor_Operator] Iniciando auditoría con {vlm_provider} "
-                f"sobre {len(view)} muestras."
+                f"[VLM_Auditor_Operator] Iniciando auditoría con {provider} (min_confidence: {min_confidence}) "
+                f"sobre {len(view) if view else 0} muestras."
             )
 
-            # --- Placeholder: Lógica de inferencia VLM ---
-            # Esta sección será reemplazada con la lógica real del Módulo 04
-            # (integración con gpt-4o / claude-3-5-sonnet, parsing de respuestas,
-            # manejo de rate limits, etc.)
+            # 3. Importe y ejecute la lógica que ya tenemos en nuestro conector
+            # Usamos importlib.import_module para evitar SyntaxError de Python por el nombre '04_agents'
+            import importlib
+            vlm_connector = importlib.import_module("src.04_agents.vlm_connector")
+            process_view_with_vlm = vlm_connector.process_view_with_vlm
+            import asyncio
             
-            for i, sample in enumerate(view):
-                # Simular inferencia (será reemplazado con llamada real a VLM)
-                ctx.set_progress(i + 1, len(view), "Auditing...")
-                
-                # Placeholder: inyectar una Classification genérica
-                sample["vlm_audit"] = fo.Classification(
-                    label="pending_audit",
-                    confidence=0.0,
-                    metadata={"provider": vlm_provider, "prompt": audit_prompt},
-                )
-                sample.save()
+            # Ejecutar el proceso asíncrono dentro del entorno síncrono del operador
+            asyncio.run(process_view_with_vlm(view, provider, min_confidence))
 
             logger.info(
-                f"[VLM_Auditor_Operator] Auditoría completada. "
-                f"{len(view)} muestras procesadas."
+                f"[VLM_Auditor_Operator] Auditoría completada."
             )
 
-            return foo.ExecutionResult(
-                output={
-                    "processed_samples": len(view),
-                    "provider": vlm_provider,
-                    "status": "completed",
-                }
-            )
+            # 4. Gatille el refresco inmediato de la interfaz de usuario
+            return ctx.trigger("refresh_page")
 
         except Exception as e:
             logger.error(
