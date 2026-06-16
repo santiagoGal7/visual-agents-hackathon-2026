@@ -1,0 +1,27 @@
+# plugins/vlm_auditor/fiftyone.yml
+# Manifiesto declarativo del plugin VLM Auditor.
+# Hackathon: Data Agents & Visual Agents · Junio 19, 2026
+
+name: vlm_auditor
+version: "1.0.0"
+label: "VLM Auditor"
+description: >
+  Plugin de auditoría visual asíncrona. Ejecuta inferencia batch
+  con gpt-4o o claude-3-5-sonnet sobre una vista guardada del dataset
+  e inyecta los resultados como fo.Classification en cada muestra.
+author: "Visual Agents Hackathon Team"
+url: "https://github.com/santiagoGal7/visual-agents-hackathon-2026"
+
+fiftyone:
+  version: ">=0.23.0"
+
+operators:
+  - name: VLM_Auditor_Operator
+    label: "Run VLM Audit"
+    description: >
+      Lanza el pipeline de inferencia VLM de forma no bloqueante
+      sobre la vista guardada seleccionada por el usuario.
+    execute_as_generator: false
+    unlisted: false
+    on_startup: false
+    background: true
